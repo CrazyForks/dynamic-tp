@@ -35,4 +35,10 @@ public class ExtensionServiceLoaderTest {
         Assertions.assertTrue(loadedInterceptors.stream().anyMatch(it-> it instanceof TestInterceptorLoader));
     }
 
+    @Test
+    public void shouldSkipBrokenSpiProvider() {
+        List<BrokenTestService> services = ExtensionServiceLoader.get(BrokenTestService.class);
+        Assertions.assertEquals(1, services.size());
+        Assertions.assertTrue(services.get(0) instanceof BrokenTestServiceImpl);
+    }
 }
