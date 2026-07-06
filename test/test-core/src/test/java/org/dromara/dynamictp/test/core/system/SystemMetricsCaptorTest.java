@@ -19,12 +19,21 @@ package org.dromara.dynamictp.test.core.system;
 
 import org.dromara.dynamictp.core.system.CpuMetricsCaptor;
 import org.dromara.dynamictp.core.system.MemoryMetricsCaptor;
+import org.dromara.dynamictp.core.system.OperatingSystemBeanManager;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+
+import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
+import java.lang.management.RuntimeMXBean;
+import java.lang.reflect.Field;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockStatic;
 
 /**
  * System metrics captor test.
@@ -49,6 +58,55 @@ class SystemMetricsCaptorTest {
     }
 
     @Test
+    void testCpuMetricsCaptorRunUpdatesProcessCpuUsage() throws Exception {
+        CpuMetricsCaptor captor = new CpuMetricsCaptor();
+        long previousProcessCpuTime = TimeUnit.MILLISECONDS.toNanos(200);
+        long newProcessCpuTime = TimeUnit.MILLISECONDS.toNanos(260);
+        long previousUpTime = Math.max(0L, getRuntimeUpTime() - 100L);
+        setField(captor, "prevProcessCpuTime", previousProcessCpuTime);
+        setField(captor, "prevUpTime", previousUpTime);
+
+        try (MockedStatic<OperatingSystemBeanManager> mocked = mockStatic(OperatingSystemBeanManager.class)) {
+            mocked.when(OperatingSystemBeanManager::getProcessCpuTime).thenReturn(newProcessCpuTime);
+
+            captor.run();
+
+            mocked.verify(OperatingSystemBeanManager::getProcessCpuTime);
+        }
+
+        long capturedUpTime = (long) getField(captor, "prevUpTime");
+        long elapsedTime = capturedUpTime - previousUpTime;
+        int cpuCores = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class).getAvailableProcessors();
+        double expectedUsage = (double) TimeUnit.NANOSECONDS.toMillis(newProcessCpuTime - previousProcessCpuTime)
+                / elapsedTime / cpuCores;
+
+        assertTrue(elapsedTime > 0);
+        assertEquals(newProcessCpuTime, getField(captor, "prevProcessCpuTime"));
+        assertEquals(expectedUsage, captor.getProcessCpuUsage(), 0.000001);
+        assertTrue(Double.isFinite(captor.getProcessCpuUsage()));
+    }
+
+    @Test
+    void testCpuMetricsCaptorRunKeepsPreviousValueWhenCpuTimeFails() throws Exception {
+        CpuMetricsCaptor captor = new CpuMetricsCaptor();
+        double previousUsage = 0.42D;
+        setField(captor, "currProcessCpuUsage", previousUsage);
+        setField(captor, "prevProcessCpuTime", 10L);
+        setField(captor, "prevUpTime", 20L);
+
+        try (MockedStatic<OperatingSystemBeanManager> mocked = mockStatic(OperatingSystemBeanManager.class)) {
+            mocked.when(OperatingSystemBeanManager::getProcessCpuTime)
+                    .thenThrow(new IllegalStateException("cpu time unavailable"));
+
+            assertDoesNotThrow(captor::run);
+        }
+
+        assertEquals(previousUsage, captor.getProcessCpuUsage(), 0.001);
+        assertEquals(10L, getField(captor, "prevProcessCpuTime"));
+        assertEquals(20L, getField(captor, "prevUpTime"));
+    }
+
+    @Test
     void testMemoryMetricsCaptorInitialValue() {
         MemoryMetricsCaptor captor = new MemoryMetricsCaptor();
 
@@ -62,5 +120,23 @@ class SystemMetricsCaptorTest {
         assertDoesNotThrow(captor::run);
         double usage = captor.getLongLivedMemoryUsage();
         assertTrue(usage == -1.0 || usage >= 0.0);
+    }
+
+    private static long getRuntimeUpTime() {
+        RuntimeMXBean runtimeBean = ManagementFactory.getPlatformMXBean(RuntimeMXBean.class);
+        return runtimeBean.getUptime();
+    }
+
+    private static Object getField(Object target, String fieldName) throws NoSuchFieldException, IllegalAccessException {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    private static void setField(Object target, String fieldName, Object value)
+            throws NoSuchFieldException, IllegalAccessException {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }
