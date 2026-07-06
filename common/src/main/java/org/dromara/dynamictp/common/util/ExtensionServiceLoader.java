@@ -17,11 +17,14 @@
 
 package org.dromara.dynamictp.common.util;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author xs.Tao
  * @since 1.1.4
  */
+@Slf4j
 public class ExtensionServiceLoader {
 
     private static final Map<Class<?>, List<?>> EXTENSION_MAP = new ConcurrentHashMap<>();
@@ -68,9 +72,22 @@ public class ExtensionServiceLoader {
 
     private static <T> List<T> load(Class<T> clazz) {
         ServiceLoader<T> serviceLoader = ServiceLoader.load(clazz);
+        Iterator<T> iterator = serviceLoader.iterator();
         List<T> services = new ArrayList<>();
-        for (T service : serviceLoader) {
-            services.add(service);
+        while (true) {
+            try {
+                if (!iterator.hasNext()) {
+                    break;
+                }
+            } catch (ServiceConfigurationError e) {
+                log.warn("Failed to load {} provider, skip remaining providers.", clazz.getName(), e);
+                break;
+            }
+            try {
+                services.add(iterator.next());
+            } catch (ServiceConfigurationError e) {
+                log.warn("Failed to load {} provider, skip it.", clazz.getName(), e);
+            }
         }
         return services;
     }
