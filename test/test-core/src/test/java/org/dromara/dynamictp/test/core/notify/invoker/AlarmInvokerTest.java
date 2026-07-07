@@ -18,6 +18,7 @@
 package org.dromara.dynamictp.test.core.notify.invoker;
 
 import org.dromara.dynamictp.common.em.NotifyItemEnum;
+import org.dromara.dynamictp.common.entity.AlarmInfo;
 import org.dromara.dynamictp.common.entity.NotifyItem;
 import org.dromara.dynamictp.common.entity.NotifyPlatform;
 import org.dromara.dynamictp.common.entity.TpMainFields;
@@ -104,11 +105,14 @@ class AlarmInvokerTest {
         AlarmCounter.initAlarmCounter(poolName, notifyItem);
         AlarmCounter.incAlarmCount(poolName, notifyItem.getType());
         AlarmCounter.incAlarmCount(poolName, notifyItem.getType());
+        AlarmInfo alarmInfo = AlarmCounter.getAlarmInfo(poolName, notifyItem.getType());
+        assertEquals(2, alarmInfo.getCount());
 
         new AlarmInvoker().invoke(new AlarmCtx(new ExecutorWrapper(poolName, executor), notifyItem));
 
         assertEquals(NotifyItemEnum.REJECT, notifier.notifyItemEnum);
-        assertEquals(0, AlarmCounter.getAlarmInfo(poolName, notifyItem.getType()).getCount());
+        assertSame(alarmInfo, AlarmCounter.getAlarmInfo(poolName, notifyItem.getType()));
+        assertEquals(0, alarmInfo.getCount());
         assertEquals(platform().getPlatformId(), notifier.platform.getPlatformId());
         assertNull(DtpNotifyCtxHolder.get());
     }

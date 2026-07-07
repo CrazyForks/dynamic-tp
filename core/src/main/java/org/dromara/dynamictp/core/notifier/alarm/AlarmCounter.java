@@ -41,6 +41,8 @@ public class AlarmCounter {
 
     private static final Map<String, Cache<String, AlarmInfo>> ALARM_INFO_CACHE = new ConcurrentHashMap<>();
 
+    private static final Map<String, Integer> ALARM_PERIOD_CACHE = new ConcurrentHashMap<>();
+
     private static final Map<String, String> LAST_ALARM_TIME_MAP = new ConcurrentHashMap<>();
 
     private AlarmCounter() { }
@@ -51,10 +53,16 @@ public class AlarmCounter {
         }
 
         String key = buildKey(threadPoolName, notifyItem.getType());
+        if (Objects.nonNull(ALARM_INFO_CACHE.get(key))
+                && Objects.equals(ALARM_PERIOD_CACHE.get(key), notifyItem.getPeriod())) {
+            return;
+        }
+
         Cache<String, AlarmInfo> cache = CacheBuilder.newBuilder()
                 .expireAfterWrite(notifyItem.getPeriod(), TimeUnit.SECONDS)
                 .build();
         ALARM_INFO_CACHE.put(key, cache);
+        ALARM_PERIOD_CACHE.put(key, notifyItem.getPeriod());
     }
 
     public static AlarmInfo getAlarmInfo(String threadPoolName, String notifyType) {

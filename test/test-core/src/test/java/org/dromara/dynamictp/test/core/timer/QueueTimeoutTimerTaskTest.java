@@ -22,9 +22,18 @@ import org.dromara.dynamictp.core.notifier.manager.AlarmManager;
 import org.dromara.dynamictp.core.support.ExecutorWrapper;
 import org.dromara.dynamictp.core.support.ThreadPoolBuilder;
 import org.dromara.dynamictp.core.timer.QueueTimeoutTimerTask;
+import org.dromara.dynamictp.spring.holder.SpringContextHolder;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.mockito.MockedStatic;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
+
+import java.lang.reflect.Field;
 
 import static org.dromara.dynamictp.common.em.NotifyItemEnum.QUEUE_TIMEOUT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,15 +43,33 @@ import static org.mockito.Mockito.mockStatic;
 /**
  * QueueTimeoutTimerTask test
  */
+@Execution(ExecutionMode.SAME_THREAD)
+@ResourceLock("SPRING_CONTEXT_HOLDER")
 class QueueTimeoutTimerTaskTest {
 
     private DtpExecutor dtpExecutor;
 
+    private GenericApplicationContext context;
+
+    private ApplicationContext originalContext;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        originalContext = springContext();
+        context = new GenericApplicationContext();
+        context.refresh();
+        new SpringContextHolder().setApplicationContext(context);
+    }
+
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         if (dtpExecutor != null) {
             dtpExecutor.shutdownNow();
         }
+        if (context != null) {
+            context.close();
+        }
+        setSpringContext(originalContext);
     }
 
     @Test
@@ -64,5 +91,17 @@ class QueueTimeoutTimerTaskTest {
             assertEquals(1, wrapper.getThreadPoolStatProvider().getQueueTimeoutCount());
             alarmManager.verify(() -> AlarmManager.tryAlarmAsync(same(wrapper), same(QUEUE_TIMEOUT), same(runnable)));
         }
+    }
+
+    private ApplicationContext springContext() throws Exception {
+        Field field = SpringContextHolder.class.getDeclaredField("context");
+        field.setAccessible(true);
+        return (ApplicationContext) field.get(null);
+    }
+
+    private void setSpringContext(ApplicationContext applicationContext) throws Exception {
+        Field field = SpringContextHolder.class.getDeclaredField("context");
+        field.setAccessible(true);
+        field.set(null, applicationContext);
     }
 }
