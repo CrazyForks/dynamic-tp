@@ -75,7 +75,9 @@ public class AlibabaDubboDtpAdapter extends AbstractDtpAdapter implements Initia
                     afterInitialize();
                     refresh(dtpProperties);
                     log.info("DynamicTp adapter, {} init end, executors {}", getTpPrefix(), executors.keySet());
-                } catch (Throwable e) { }
+                } catch (Throwable e) {
+                    log.debug("DynamicTp adapter, {} init failed, retrying", getTpPrefix(), e);
+                }
             }
         });
         executor.shutdown();
